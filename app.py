@@ -5,10 +5,10 @@ A focused MBBS study planner
 
 from __future__ import annotations
 
-
+import json
+from json import JSONDecodeError
 from datetime import date
 from pathlib import Path
-
 import streamlit as st
 
 
@@ -91,7 +91,7 @@ def load_data() -> dict:
     try:
         with DATA_FILE.open("r", encoding="utf-8") as file:
             data = json.load(file)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, JSONDecodeError):
         return default_data()
 
     # Keep the app compatible with older saved files.
