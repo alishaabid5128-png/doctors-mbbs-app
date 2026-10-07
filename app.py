@@ -1,805 +1,640 @@
-import streamlit as st
-import json
-import os
-from datetime import date, datetime
+"""
+MedCore — Clinical OS
+A focused MBBS study planner
+"""
 
-# =========================================================
-# DOCTORS — PERSONALIZED MBBS STUDY APP
-# =========================================================
+from __future__ import annotations
+
+
+from datetime import date
+from pathlib import Path
+
+import streamlit as st
+
+
+# ---------------------------------------------------------------------------
+# App configuration
+# ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="DOCTORS",
+    page_title="MedCore — Clinical OS",
     page_icon="🩺",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-DATA_FILE = "doctors_data.json"
+DATA_FILE = Path("doctors_data.json")
 
 
-# =========================================================
-# DATA
-# =========================================================
+# ---------------------------------------------------------------------------
+# Styling
+# ---------------------------------------------------------------------------
 
-def default_data():
+st.markdown(
+    """
+    <style>
+        #MainMenu, footer {visibility: hidden;}
+
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+            max-width: 1400px;
+        }
+
+        [data-testid="stMetric"] {
+            border: 1px solid rgba(128, 128, 128, 0.18);
+            border-radius: 14px;
+            padding: 14px;
+        }
+
+        .app-subtitle {
+            color: #6b7280;
+            margin-top: -0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Data layer
+# ---------------------------------------------------------------------------
+
+def default_data() -> dict:
     return {
         "profile": {
             "name": "",
             "mbbs_year": 1,
-            "daily_target": 4.0
+            "daily_target": 4.0,
         },
         "subjects": {},
         "exams": [],
         "study_sessions": [],
-        "schedule": []
+        "schedule": [],
     }
 
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return default_data()
+def load_data() -> dict:
+    if not DATA_FILE.exists():
+        return default_data()
 
-    return default_data()
+    try:
+        with DATA_FILE.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return default_data()
+
+    # Keep the app compatible with older saved files.
+    base = default_data()
+    for key, value in base.items():
+        data.setdefault(key, value)
+
+    data.setdefault("profile", {})
+    for key, value in base["profile"].items():
+        data["profile"].setdefault(key, value)
+
+    # Friends were intentionally removed from the application.
+    data.pop("friends", None)
+
+    return data
 
 
-def save_data():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(st.session_state.data, f, indent=4)
+def save_data() -> None:
+    try:
+        with DATA_FILE.open("w", encoding="utf-8") as file:
+            json.dump(st.session_state.data, file, indent=4)
+    except OSError as exc:
+        st.error(f"Unable to save your data: {exc}")
 
 
 if "data" not in st.session_state:
     st.session_state.data = load_data()
 
-
 data = st.session_state.data
 
 
-# =========================================================
-# HELPER FUNCTIONS
-# =========================================================
+# ---------------------------------------------------------------------------
+# Calculations
+# ---------------------------------------------------------------------------
 
-def total_modules():
-    total = 0
-
-    for subject in data["subjects"].values():
-        total += len(subject["modules"])
-
-    return total
+def total_modules() -> int:
+    return sum(len(subject.get("modules", [])) for subject in data["subjects"].values())
 
 
-def completed_modules():
-    completed = 0
-
-    for subject in data["subjects"].values():
-        for module in subject["modules"]:
-            if module["completed"]:
-                completed += 1
-
-    return completed
-
-
-def syllabus_percentage():
-    total = total_modules()
-
-    if total == 0:
-        return 0
-
-    return round((completed_modules() / total) * 100, 1)
-
-
-def total_study_hours():
-    total_minutes = sum(
-        session["minutes"]
-        for session in data["study_sessions"]
-    )
-
-    return total_minutes / 60
-
-
-def today_study_minutes():
-    today = str(date.today())
-
+def completed_modules() -> int:
     return sum(
-        session["minutes"]
-        for session in data["study_sessions"]
-        if session["date"] == today
+        1
+        for subject in data["subjects"].values()
+        for module in subject.get("modules", [])
+        if module.get("completed", False)
     )
 
 
-# =========================================================
-# SIDEBAR
-# =========================================================
-
-st.sidebar.title("🩺 DOCTORS")
-
-st.sidebar.caption("Your personalized MBBS study companion")
-
-page = st.sidebar.radio(
-    "MENU",
-    [
-        "🏠 Dashboard",
-        "👤 My Profile",
-        "📚 Syllabus Tracker",
-        "📅 Study Schedule",
-        "📝 Exam Tracker",
-        "⏱️ Study Hours",
-        "👥 Friends"
-    ]
-)
+def syllabus_percentage() -> float:
+    total = total_modules()
+    return round((completed_modules() / total) * 100, 1) if total else 0.0
 
 
-# =========================================================
-# DASHBOARD
-# =========================================================
+def total_study_hours() -> float:
+    minutes = sum(session.get("minutes", 0) for session in data["study_sessions"])
+    return minutes / 60
+
+
+def today_study_minutes() -> int:
+    today = str(date.today())
+    return sum(
+        session.get("minutes", 0)
+        for session in data["study_sessions"]
+        if session.get("date") == today
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sidebar navigation
+# ---------------------------------------------------------------------------
+
+with st.sidebar:
+    st.title("🩺 MedCore")
+    st.caption("Your focused MBBS study companion")
+    st.divider()
+
+    page = st.radio(
+        "Workspace",
+        [
+            "🏠 Dashboard",
+            "👤 My Profile",
+            "📚 Syllabus Tracker",
+            "📅 Study Schedule",
+            "📝 Exam Tracker",
+            "⏱️ Study Hours",
+        ],
+    )
+
+    st.divider()
+    st.caption("Plan • Study • Track • Improve")
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
 
 if page == "🏠 Dashboard":
+    name = data["profile"].get("name", "").strip()
+    greeting = f"Welcome back, {name}" if name else "Welcome to MedCore"
 
-    name = data["profile"]["name"]
-
-    if name:
-        st.title(f"🩺 Welcome, {name}!")
-    else:
-        st.title("🩺 DOCTORS")
-
-    st.subheader("Your personalized MBBS dashboard")
-
-    st.write("---")
+    st.title(f"🩺 {greeting}")
+    st.markdown(
+        '<div class="app-subtitle">Your personal MBBS command center.</div>',
+        unsafe_allow_html=True,
+    )
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "🎓 MBBS Year",
-            data["profile"]["mbbs_year"]
-        )
+        st.metric("MBBS Year", data["profile"]["mbbs_year"])
 
     with col2:
-        st.metric(
-            "📚 Syllabus",
-            f"{syllabus_percentage()}%"
-        )
+        st.metric("Syllabus", f"{syllabus_percentage():.1f}%")
 
     with col3:
-        st.metric(
-            "⏱️ Study Hours",
-            f"{total_study_hours():.1f}"
-        )
+        st.metric("Study Hours", f"{total_study_hours():.1f}")
 
     with col4:
-        st.metric(
-            "📖 Modules",
-            f"{completed_modules()}/{total_modules()}"
+        st.metric("Modules", f"{completed_modules()}/{total_modules()}")
+
+    st.divider()
+
+    left, right = st.columns([1.4, 1])
+
+    with left:
+        st.subheader("📊 Syllabus Progress")
+        progress = syllabus_percentage() / 100
+        st.progress(progress)
+        st.caption(
+            f"{completed_modules()} of {total_modules()} modules completed"
         )
 
-    st.write("---")
+        st.subheader("⏱️ Today's Study")
+        today_hours = today_study_minutes() / 60
+        target = float(data["profile"].get("daily_target", 0))
+        target_progress = min(today_hours / target, 1.0) if target > 0 else 0
+        st.progress(target_progress)
+        st.caption(f"{today_hours:.1f} / {target:.1f} hours")
 
-    st.header("📊 Syllabus Progress")
+    with right:
+        st.subheader("📝 Upcoming Exams")
 
-    progress = syllabus_percentage() / 100
+        upcoming = []
+        for exam in data["exams"]:
+            try:
+                exam_date = date.fromisoformat(exam["date"])
+            except (KeyError, ValueError):
+                continue
 
-    st.progress(progress)
+            days_left = (exam_date - date.today()).days
+            if days_left >= 0:
+                upcoming.append(
+                    (days_left, exam.get("name", "Untitled Exam"), exam.get("subject", ""))
+                )
 
-    st.write(
-        f"**{completed_modules()} of {total_modules()} modules completed**"
-    )
+        upcoming.sort(key=lambda item: item[0])
 
-    st.write("---")
-
-    st.header("⏱️ Today's Study")
-
-    today_minutes = today_study_minutes()
-
-    target = data["profile"]["daily_target"]
-
-    today_hours = today_minutes / 60
-
-    st.write(
-        f"**{today_hours:.1f} / {target:.1f} hours**"
-    )
-
-    st.progress(
-        min(today_hours / target, 1.0)
-        if target > 0 else 0
-    )
-
-    st.write("---")
-
-    st.header("📝 Upcoming Exams")
-
-    upcoming = []
-
-    for exam in data["exams"]:
-
-        exam_date = date.fromisoformat(exam["date"])
-
-        days_left = (exam_date - date.today()).days
-
-        if days_left >= 0:
-            upcoming.append(
-                (days_left, exam["name"], exam["subject"])
-            )
-
-    upcoming.sort()
-
-    if upcoming:
-
-        for days, name, subject in upcoming[:5]:
-
-            if days == 0:
-                countdown = "TODAY!"
-            else:
-                countdown = f"{days} days left"
-
-            st.info(
-                f"📝 **{name}** — {subject}\n\n"
-                f"⏳ **{countdown}**"
-            )
-
-    else:
-        st.write("No upcoming exams added yet.")
-
-    st.write("---")
-
-    st.caption(
-        "DOCTORS 🩺 — Plan. Study. Track. Improve."
-    )
+        if upcoming:
+            for days, exam_name, subject in upcoming[:5]:
+                countdown = "Today" if days == 0 else f"{days} days left"
+                st.info(f"**{exam_name}**\n\n{subject} · {countdown}")
+        else:
+            st.info("No upcoming exams. Add your next exam from Exam Tracker.")
 
 
-# =========================================================
-# PROFILE
-# =========================================================
+# ---------------------------------------------------------------------------
+# Profile
+# ---------------------------------------------------------------------------
 
 elif page == "👤 My Profile":
-
     st.title("👤 My Profile")
-
-    st.write(
-        "Your profile controls your personalized study dashboard."
+    st.markdown(
+        '<div class="app-subtitle">Set the information used to personalize your dashboard.</div>',
+        unsafe_allow_html=True,
     )
 
-    name = st.text_input(
-        "Your name",
-        value=data["profile"]["name"]
-    )
-
-    year = st.selectbox(
-        "MBBS Year",
-        [1, 2, 3, 4, 5],
-        index=data["profile"]["mbbs_year"] - 1
-    )
-
-    target = st.number_input(
-        "Daily study target (hours)",
-        min_value=0.5,
-        max_value=24.0,
-        value=float(data["profile"]["daily_target"]),
-        step=0.5
-    )
-
-    if st.button("💾 Save Profile", use_container_width=True):
-
-        data["profile"]["name"] = name
-        data["profile"]["mbbs_year"] = year
-        data["profile"]["daily_target"] = target
-
-        save_data()
-
-        st.success("Profile saved!")
-
-
-# =========================================================
-# SYLLABUS TRACKER
-# =========================================================
-
-elif page == "📚 Syllabus Tracker":
-
-    st.title("📚 Syllabus Tracker")
-
-    st.write(
-        "Create your own subjects and up to 15 modules per subject."
-    )
-
-    st.header("➕ Add Subject")
-
-    subject_name = st.text_input(
-        "Subject name",
-        placeholder="Example: Anatomy"
-    )
-
-    module_count = st.number_input(
-        "Number of modules",
-        min_value=1,
-        max_value=15,
-        value=5,
-        step=1
-    )
-
-    if st.button("➕ Create Subject"):
-
-        if subject_name.strip():
-
-            if subject_name not in data["subjects"]:
-
-                modules = []
-
-                for i in range(1, module_count + 1):
-
-                    modules.append({
-                        "name": f"Module {i}",
-                        "completed": False
-                    })
-
-                data["subjects"][subject_name] = {
-                    "modules": modules
-                }
-
-                save_data()
-
-                st.success(
-                    f"{subject_name} added with {module_count} modules!"
-                )
-
-            else:
-                st.warning("That subject already exists.")
-
-        else:
-            st.warning("Please enter a subject name.")
-
-    st.write("---")
-
-    st.header("📖 Your Subjects")
-
-    if not data["subjects"]:
-
-        st.info(
-            "No subjects yet. Add your first subject above."
+    with st.form("profile_form"):
+        name = st.text_input(
+            "Your name",
+            value=data["profile"].get("name", ""),
+            placeholder="Enter your name",
         )
 
+        year = st.selectbox(
+            "MBBS Year",
+            options=[1, 2, 3, 4, 5],
+            index=max(0, min(4, int(data["profile"].get("mbbs_year", 1)) - 1)),
+        )
+
+        target = st.number_input(
+            "Daily study target (hours)",
+            min_value=0.5,
+            max_value=24.0,
+            value=float(data["profile"].get("daily_target", 4.0)),
+            step=0.5,
+        )
+
+        submitted = st.form_submit_button(
+            "Save Profile",
+            use_container_width=True,
+            type="primary",
+        )
+
+    if submitted:
+        data["profile"].update(
+            {
+                "name": name.strip(),
+                "mbbs_year": year,
+                "daily_target": target,
+            }
+        )
+        save_data()
+        st.success("Profile updated successfully.")
+
+
+# ---------------------------------------------------------------------------
+# Syllabus tracker
+# ---------------------------------------------------------------------------
+
+elif page == "📚 Syllabus Tracker":
+    st.title("📚 Syllabus Tracker")
+    st.markdown(
+        '<div class="app-subtitle">Organize subjects and track module completion.</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("subject_form"):
+        subject_name = st.text_input(
+            "Subject name",
+            placeholder="e.g. Anatomy",
+        )
+        module_count = st.number_input(
+            "Initial modules",
+            min_value=1,
+            max_value=15,
+            value=5,
+            step=1,
+        )
+        create_subject = st.form_submit_button(
+            "Create Subject",
+            use_container_width=True,
+            type="primary",
+        )
+
+    if create_subject:
+        subject_name = subject_name.strip()
+
+        if not subject_name:
+            st.warning("Please enter a subject name.")
+        elif subject_name in data["subjects"]:
+            st.warning("That subject already exists.")
+        else:
+            data["subjects"][subject_name] = {
+                "modules": [
+                    {"name": f"Module {i}", "completed": False}
+                    for i in range(1, int(module_count) + 1)
+                ]
+            }
+            save_data()
+            st.success(f"{subject_name} created successfully.")
+            st.rerun()
+
+    st.divider()
+
+    if not data["subjects"]:
+        st.info("No subjects yet. Create your first subject above.")
+
     for subject_name, subject in data["subjects"].items():
+        modules = subject.get("modules", [])
 
-        with st.expander(
-            f"📚 {subject_name}"
-        ):
+        with st.expander(f"📚 {subject_name}", expanded=True):
+            completed = sum(1 for module in modules if module.get("completed"))
+            percentage = round(completed / len(modules) * 100, 1) if modules else 0
 
-            modules = subject["modules"]
-
-            completed = sum(
-                1 for module in modules
-                if module["completed"]
-            )
-
-            percentage = (
-                round(completed / len(modules) * 100, 1)
-                if modules else 0
-            )
-
-            st.write(
-                f"**Progress: {completed}/{len(modules)} "
-                f"modules ({percentage}%)**"
-            )
-
+            st.write(f"**Progress: {completed}/{len(modules)} modules ({percentage}%)**")
             st.progress(percentage / 100)
 
-            for i, module in enumerate(modules):
-
+            for index, module in enumerate(modules):
                 checked = st.checkbox(
-                    module["name"],
-                    value=module["completed"],
-                    key=f"{subject_name}_{i}"
+                    module.get("name", f"Module {index + 1}"),
+                    value=module.get("completed", False),
+                    key=f"module_{subject_name}_{index}",
                 )
 
-                if checked != module["completed"]:
-
+                if checked != module.get("completed", False):
                     module["completed"] = checked
                     save_data()
 
-            st.write("")
-
-            new_module = st.text_input(
-                "Add a module",
-                key=f"new_{subject_name}"
-            )
-
-            if st.button(
-                "➕ Add Module",
-                key=f"add_{subject_name}"
-            ):
-
-                if len(modules) >= 15:
-
-                    st.error(
-                        "Maximum 15 modules per subject."
+            if len(modules) < 15:
+                with st.form(f"module_form_{subject_name}"):
+                    new_module = st.text_input(
+                        "Add module",
+                        placeholder="e.g. Thorax",
                     )
+                    add_module = st.form_submit_button("Add Module")
 
-                elif new_module.strip():
-
-                    modules.append({
-                        "name": new_module,
-                        "completed": False
-                    })
-
-                    save_data()
-
-                    st.rerun()
+                if add_module:
+                    new_module = new_module.strip()
+                    if new_module:
+                        modules.append({"name": new_module, "completed": False})
+                        save_data()
+                        st.rerun()
 
 
-# =========================================================
-# STUDY SCHEDULE
-# =========================================================
+# ---------------------------------------------------------------------------
+# Study schedule
+# ---------------------------------------------------------------------------
 
 elif page == "📅 Study Schedule":
-
-    st.title("📅 Personalized Study Schedule")
-
-    st.write(
-        "Create your own study plan based on your subjects and goals."
+    st.title("📅 Study Schedule")
+    st.markdown(
+        '<div class="app-subtitle">Build a clear plan around your subjects and goals.</div>',
+        unsafe_allow_html=True,
     )
 
-    study_date = st.date_input(
-        "Study date",
-        value=date.today()
-    )
-
-    study_subject = st.text_input(
-        "Subject",
-        placeholder="Example: Anatomy"
-    )
-
-    study_topic = st.text_input(
-        "Module / Topic",
-        placeholder="Example: Thorax"
-    )
-
-    study_hours = st.number_input(
-        "Planned hours",
-        min_value=0.5,
-        max_value=24.0,
-        value=1.0,
-        step=0.5
-    )
-
-    if st.button(
-        "📅 Add to Schedule",
-        use_container_width=True
-    ):
-
-        if study_subject and study_topic:
-
-            data["schedule"].append({
-                "date": str(study_date),
-                "subject": study_subject,
-                "topic": study_topic,
-                "hours": study_hours,
-                "done": False
-            })
-
-            save_data()
-
-            st.success("Study session added!")
-
-    st.write("---")
-
-    st.header("🗓️ Your Schedule")
-
-    schedule = sorted(
-        data["schedule"],
-        key=lambda x: x["date"]
-    )
-
-    if schedule:
-
-        for i, item in enumerate(schedule):
-
-            if item["date"] >= str(date.today()):
-
-                done = st.checkbox(
-                    f"{item['date']} — "
-                    f"{item['subject']} — "
-                    f"{item['topic']} "
-                    f"({item['hours']}h)",
-                    value=item["done"],
-                    key=f"schedule_{i}"
-                )
-
-                if done != item["done"]:
-
-                    item["done"] = done
-                    save_data()
-
-    else:
-
-        st.info("Your schedule is empty.")
-
-
-# =========================================================
-# EXAM TRACKER
-# =========================================================
-
-elif page == "📝 Exam Tracker":
-
-    st.title("📝 Exam Tracker")
-
-    st.write(
-        "Add your own exams. DOCTORS calculates the countdown automatically."
-    )
-
-    exam_name = st.text_input(
-        "Exam name",
-        placeholder="Example: Anatomy Final"
-    )
-
-    exam_subject = st.text_input(
-        "Subject",
-        placeholder="Example: Anatomy"
-    )
-
-    exam_date = st.date_input(
-        "Exam date",
-        value=date.today()
-    )
-
-    if st.button(
-        "➕ Add Exam",
-        use_container_width=True
-    ):
-
-        if exam_name:
-
-            data["exams"].append({
-                "name": exam_name,
-                "subject": exam_subject,
-                "date": str(exam_date)
-            })
-
-            save_data()
-
-            st.success("Exam added!")
-
-    st.write("---")
-
-    st.header("⏳ Exam Countdown")
-
-    exams = sorted(
-        data["exams"],
-        key=lambda x: x["date"]
-    )
-
-    if exams:
-
-        for exam in exams:
-
-            exam_day = date.fromisoformat(
-                exam["date"]
-            )
-
-            days = (
-                exam_day - date.today()
-            ).days
-
-            if days < 0:
-
-                st.error(
-                    f"❌ {exam['name']} — Exam passed"
-                )
-
-            elif days == 0:
-
-                st.warning(
-                    f"🚨 {exam['name']} — TODAY!"
-                )
-
-            else:
-
-                st.info(
-                    f"📝 **{exam['name']}** "
-                    f"({exam['subject']})\n\n"
-                    f"📅 {exam['date']} — "
-                    f"⏳ **{days} days left**"
-                )
-
-    else:
-
-        st.info("No exams added yet.")
-
-
-# =========================================================
-# STUDY HOURS
-# =========================================================
-
-elif page == "⏱️ Study Hours":
-
-    st.title("⏱️ Study Hours")
-
-    st.write(
-        "Record how much you study each day."
-    )
-
-    session_date = st.date_input(
-        "Date",
-        value=date.today()
-    )
-
-    subject = st.text_input(
-        "Subject studied",
-        placeholder="Example: Physiology"
-    )
-
-    hours = st.number_input(
-        "Hours",
-        min_value=0,
-        max_value=24,
-        value=1
-    )
-
-    minutes = st.number_input(
-        "Extra minutes",
-        min_value=0,
-        max_value=59,
-        value=0
-    )
-
-    if st.button(
-        "⏱️ Record Study",
-        use_container_width=True
-    ):
-
-        total_minutes = hours * 60 + minutes
-
-        if total_minutes > 0:
-
-            data["study_sessions"].append({
-                "date": str(session_date),
-                "subject": subject,
-                "minutes": total_minutes
-            })
-
-            save_data()
-
-            st.success(
-                f"Recorded {hours}h {minutes}m of study!"
-            )
-
-    st.write("---")
-
-    st.header("📊 Study Statistics")
-
-    total = total_study_hours()
-
-    today = today_study_minutes() / 60
-
-    st.metric(
-        "Today",
-        f"{today:.1f} hours"
-    )
-
-    st.metric(
-        "All recorded study",
-        f"{total:.1f} hours"
-    )
-
-    st.write("---")
-
-    st.subheader("📖 Study History")
-
-    for session in reversed(
-        data["study_sessions"][-20:]
-    ):
-
-        st.write(
-            f"📅 {session['date']} — "
-            f"**{session['subject']}** — "
-            f"{session['minutes'] // 60}h "
-            f"{session['minutes'] % 60}m"
+    with st.form("schedule_form"):
+        study_date = st.date_input("Study date", value=date.today())
+        study_subject = st.text_input(
+            "Subject",
+            placeholder="e.g. Anatomy",
+        )
+        study_topic = st.text_input(
+            "Module / Topic",
+            placeholder="e.g. Thorax",
+        )
+        study_hours = st.number_input(
+            "Planned hours",
+            min_value=0.5,
+            max_value=24.0,
+            value=1.0,
+            step=0.5,
         )
 
+        add_session = st.form_submit_button(
+            "Add to Schedule",
+            use_container_width=True,
+            type="primary",
+        )
 
-# =========================================================
-# FRIENDS
-# =========================================================
-
-elif page == "👥 Friends":
-
-    st.title("👥 Study Friends")
-
-    st.write(
-        "This first version lets you keep a simple private comparison "
-        "list. We can build online friend accounts later."
-    )
-
-    st.info(
-        "For privacy, friend information is stored only on your computer "
-        "in this version."
-    )
-
-    friend_name = st.text_input(
-        "Friend name"
-    )
-
-    friend_hours = st.number_input(
-        "Friend's study hours",
-        min_value=0.0,
-        max_value=5000.0,
-        value=0.0,
-        step=0.5
-    )
-
-    if "friends" not in data:
-        data["friends"] = []
-
-    if st.button(
-        "➕ Add Friend",
-        use_container_width=True
-    ):
-
-        if friend_name:
-
-            data["friends"].append({
-                "name": friend_name,
-                "hours": friend_hours
-            })
-
+    if add_session:
+        if not study_subject.strip() or not study_topic.strip():
+            st.warning("Please enter both a subject and a topic.")
+        else:
+            data["schedule"].append(
+                {
+                    "date": str(study_date),
+                    "subject": study_subject.strip(),
+                    "topic": study_topic.strip(),
+                    "hours": study_hours,
+                    "done": False,
+                }
+            )
             save_data()
+            st.success("Study session added.")
 
-            st.success("Friend added!")
+    st.divider()
+    st.subheader("🗓️ Your Schedule")
 
-    st.write("---")
+    schedule = sorted(data["schedule"], key=lambda item: item.get("date", ""))
 
-    st.header("🏆 Study Comparison")
+    future_items = [
+        item for item in schedule
+        if item.get("date", "") >= str(date.today())
+    ]
 
-    leaderboard = []
-
-    if data["profile"]["name"]:
-
-        leaderboard.append({
-            "name": data["profile"]["name"],
-            "hours": total_study_hours()
-        })
-
-    for friend in data.get("friends", []):
-
-        leaderboard.append(friend)
-
-    leaderboard.sort(
-        key=lambda x: x["hours"],
-        reverse=True
-    )
-
-    if leaderboard:
-
-        for position, person in enumerate(
-            leaderboard,
-            start=1
-        ):
-
-            if position == 1:
-                medal = "🥇"
-            elif position == 2:
-                medal = "🥈"
-            elif position == 3:
-                medal = "🥉"
-            else:
-                medal = "👤"
-
-            st.write(
-                f"{medal} **{position}. "
-                f"{person['name']}** — "
-                f"{person['hours']:.1f} hours"
+    if not future_items:
+        st.info("Your schedule is empty.")
+    else:
+        for index, item in enumerate(future_items):
+            label = (
+                f"{item.get('date')} — {item.get('subject')} — "
+                f"{item.get('topic')} ({item.get('hours', 0)}h)"
             )
 
+            done = st.checkbox(
+                label,
+                value=item.get("done", False),
+                key=f"schedule_{index}_{item.get('date')}",
+            )
+
+            if done != item.get("done", False):
+                item["done"] = done
+                save_data()
+
+
+# ---------------------------------------------------------------------------
+# Exam tracker
+# ---------------------------------------------------------------------------
+
+elif page == "📝 Exam Tracker":
+    st.title("📝 Exam Tracker")
+    st.markdown(
+        '<div class="app-subtitle">Add exams and let MedCore calculate the countdown.</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("exam_form"):
+        exam_name = st.text_input(
+            "Exam name",
+            placeholder="e.g. Anatomy Final",
+        )
+        exam_subject = st.text_input(
+            "Subject",
+            placeholder="e.g. Anatomy",
+        )
+        exam_date = st.date_input("Exam date", value=date.today())
+
+        add_exam = st.form_submit_button(
+            "Add Exam",
+            use_container_width=True,
+            type="primary",
+        )
+
+    if add_exam:
+        if not exam_name.strip():
+            st.warning("Please enter an exam name.")
+        else:
+            data["exams"].append(
+                {
+                    "name": exam_name.strip(),
+                    "subject": exam_subject.strip(),
+                    "date": str(exam_date),
+                }
+            )
+            save_data()
+            st.success("Exam added.")
+
+    st.divider()
+    st.subheader("⏳ Exam Countdown")
+
+    exams = sorted(data["exams"], key=lambda item: item.get("date", ""))
+
+    if not exams:
+        st.info("No exams added yet.")
     else:
+        for exam in exams:
+            try:
+                exam_day = date.fromisoformat(exam["date"])
+            except (KeyError, ValueError):
+                continue
 
-        st.info("Add yourself and your friends to compare study hours.")
+            days = (exam_day - date.today()).days
+            name = exam.get("name", "Untitled Exam")
+            subject = exam.get("subject", "")
+
+            if days < 0:
+                st.error(f"**{name}** — Exam passed")
+            elif days == 0:
+                st.warning(f"**{name}** — TODAY")
+            else:
+                st.info(
+                    f"**{name}** · {subject}\n\n"
+                    f"📅 {exam['date']} · ⏳ **{days} days left**"
+                )
 
 
-# =========================================================
-# FOOTER
-# =========================================================
+# ---------------------------------------------------------------------------
+# Study hours
+# ---------------------------------------------------------------------------
 
-st.write("---")
+elif page == "⏱️ Study Hours":
+    st.title("⏱️ Study Hours")
+    st.markdown(
+        '<div class="app-subtitle">Record focused study time and review your history.</div>',
+        unsafe_allow_html=True,
+    )
 
-st.caption(
-    "DOCTORS 🩺 — Personalized MBBS Study Companion"
-)
+    with st.form("study_form"):
+        session_date = st.date_input("Date", value=date.today())
+        subject = st.text_input(
+            "Subject studied",
+            placeholder="e.g. Physiology",
+        )
+        hours = st.number_input(
+            "Hours",
+            min_value=0,
+            max_value=24,
+            value=1,
+            step=1,
+        )
+        minutes = st.number_input(
+            "Extra minutes",
+            min_value=0,
+            max_value=59,
+            value=0,
+            step=1,
+        )
+
+        record_study = st.form_submit_button(
+            "Record Study",
+            use_container_width=True,
+            type="primary",
+        )
+
+    if record_study:
+        total_minutes = int(hours) * 60 + int(minutes)
+
+        if total_minutes <= 0:
+            st.warning("Enter at least some study time.")
+        else:
+            data["study_sessions"].append(
+                {
+                    "date": str(session_date),
+                    "subject": subject.strip() or "General Study",
+                    "minutes": total_minutes,
+                }
+            )
+            save_data()
+            st.success(
+                f"Recorded {int(hours)}h {int(minutes)}m of study."
+            )
+
+    st.divider()
+
+    today_hours = today_study_minutes() / 60
+    total_hours = total_study_hours()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Today", f"{today_hours:.1f} hours")
+    with col2:
+        st.metric("All Recorded Study", f"{total_hours:.1f} hours")
+
+    st.divider()
+    st.subheader("📖 Recent Study History")
+
+    history = data["study_sessions"][-20:]
+
+    if not history:
+        st.info("No study sessions recorded yet.")
+    else:
+        for session in reversed(history):
+            minutes = int(session.get("minutes", 0))
+            st.write(
+                f"📅 {session.get('date')} — "
+                f"**{session.get('subject', 'General Study')}** — "
+                f"{minutes // 60}h {minutes % 60}m"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Minimal application footer
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.caption("MedCore — Clinical OS · Personal MBBS Study Planner")
