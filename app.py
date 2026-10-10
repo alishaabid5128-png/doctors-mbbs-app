@@ -14,7 +14,7 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 # Your actual app code starts here...
-st.title(""MedCore — Clinical OS")
+st.title(""MedCore — Clinical OS"")
 A focused MBBS study planner
 """
 
