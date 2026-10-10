@@ -90,7 +90,20 @@ st.markdown("""
         }
 
         [data-testid="stMetric"] {
-            border: 1px solid rgba(128, 128, 128, 0.18);
+            
+import streamlit as st
+
+st.markdown("""
+<style>
+    .my-container {
+        border: 1px solid rgba(128, 128, 128, 0.18);
+        max-width: 1400px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
             border-radius: 14px;
             padding: 14px;
         }
