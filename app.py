@@ -74,7 +74,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-            max-width: 1400px;
+           
+import streamlit as st
+
+st.markdown("""
+<style>
+    .main-container {
+        max-width: 1400px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
         }
 
         [data-testid="stMetric"] {
