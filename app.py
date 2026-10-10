@@ -1,5 +1,20 @@
-"""
-MedCore — Clinical OS
+import streamlit as st
+
+# 1. Page config must be the first Streamlit command called
+st.set_page_config(page_title="MEDCORE", layout="wide")
+
+# 2. Inject Custom CSS to hide the hamburger menu and footer
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            footer {visibility: hidden;}
+            header {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Your actual app code starts here...
+st.title(""MedCore — Clinical OS")
 A focused MBBS study planner
 """
 
