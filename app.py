@@ -62,7 +62,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-            padding-bottom: 3rem;
+            
+import streamlit as st
+
+st.markdown("""
+<style>
+    .my-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
             max-width: 1400px;
         }
 
